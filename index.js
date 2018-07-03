@@ -13,7 +13,7 @@ const PLUGIN_NAME = 'TranslatePlugin';
 const translationSymbol = require('./html-loader').symbol;
 
 const translationFilePattern = /locales\/([^/]+)\/([^/]+)\.[^\.]+.json$/;
-const countPattern = /_\d+$/;
+const translationVariantPattern = /_((\d+)|plural)$/;
 
 function flatten(obj, result = {}, prefix = '') {
 	_.forEach(obj, (v, k) => {
@@ -112,7 +112,7 @@ class TranslatePlugin {
 					const flatBaseTranslations = flatten(this.baseTranslations);
 					_.forEach(flatBaseTranslations, (v, key) => {
 						if (!extractedTranslations[key]) {
-							if (!countPattern.test(key)) {
+							if (!translationVariantPattern.test(key)) {
 								_.set(diff.removed, key, v);
 							}
 						} else if (extractedTranslations[key] !== v) {
