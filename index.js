@@ -131,7 +131,27 @@ class TranslatePlugin {
 
 				const translations = _.clone(this.baseTranslations);
 				_.forEach(extractedTranslations, (value, key) => {
-					_.set(translations, key, value);
+					const parts = key.split('.');
+					let parent = translations;
+					while (parts.length > 1) {
+						const path = parts.shift();
+						if (!parent[path]) {
+							parent[path] = {};
+						} else if (_.isString(parent[path])) {
+							const suffx = parts.join('.');
+							const parentPath = key.substr(0, key.length - suffx.length - 1);
+							compilation.warnings.push(new Error(`Translation key "${key}" cannot be used because the parent ${parentPath} is already in use.`));
+							return;
+						}
+						parent = parent[path];
+					}
+					const path = parts[0];
+					if (parent[path] && !_.isString(parent[path])) {
+						const subkeys = _.keys(parent[path]).map((k) => `${key}.${k}`);
+						compilation.warnings.push(new Error(`Translation key "${key}" cannot be used because there are already sub-keys:\n\t${subkeys.join('\n\t')}`));
+						return;
+					}
+					parent[path] = value;
 				});
 
 				if (Object.keys(translations).length) {
