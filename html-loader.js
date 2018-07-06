@@ -3,27 +3,28 @@
 const cheerio = require('cheerio');
 
 function findTranslations(html) {
-	return new Promise((resolve) => {
-		const $ = cheerio.load(html, {
-			xml: {
-				xmlMode: false,
-			}
-		});
-		const template =  $('template');
-		if (template.length) {
-			$('body').html(template.html());
+	const $ = cheerio.load(html, {
+		xml: {
+			xmlMode: false,
 		}
-		const translations = [];
-		$('[t]').each((__i, el) => {
-			parseTranslations($(el)).forEach(({key, value}) => {
-				if (value && value.indexOf('${') !== -1) {
-					this.emitWarning(new Error(`Translation key "${key}" contains Aurelia interpolation:\n\t${value}`));
-				}
-				translations.push({key, value});
-			});
-		});
-		resolve(translations);
 	});
+	const templates =  $('template');
+	const translations = [];
+	if (templates.length) {
+		templates.each((__i, el) => {
+			translations.push(...findTranslations.call(this, $(el).html()));
+		});
+	}
+
+	$('[t]').each((__i, el) => {
+		parseTranslations($(el)).forEach(({key, value}) => {
+			if (value && value.indexOf('${') !== -1) {
+				this.emitWarning(new Error(`Translation key "${key}" contains Aurelia interpolation:\n\t${value}`));
+			}
+			translations.push({key, value});
+		});
+	});
+	return translations;
 }
 
 const attrExp = /\[([a-z\-]*)\]/i;
@@ -60,18 +61,12 @@ function parseTranslations(element) {
 const transSymbol = Symbol('HTML translations');
 
 function htmlTranslationLoader(content) {
-	// console.log('Looking for translations in ', this._module.request);
 	if (this.cacheable) {
 		this.cacheable();
 	}
-	const callback = this.async();
-	return findTranslations.call(this, content)
-	.then(translations => {
-		// console.log('Found', translations.length);
-		this._module[transSymbol] = translations;
-		callback(null, content);
-	})
-	.catch(callback);
+	// console.log('Looking for translations in ', this._module.request);
+	const translations = findTranslations.call(this, content);
+	this._module[transSymbol] = translations;
 }
 htmlTranslationLoader.symbol = transSymbol;
 
