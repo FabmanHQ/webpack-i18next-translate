@@ -67,6 +67,7 @@ function htmlTranslationLoader(content) {
 	// console.log('Looking for translations in ', this._module.request);
 	const translations = findTranslations.call(this, content);
 	this._module[transSymbol] = translations;
+	return content;
 }
 htmlTranslationLoader.symbol = transSymbol;
 
