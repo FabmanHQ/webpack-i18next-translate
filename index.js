@@ -10,7 +10,8 @@ const loaderUtils = require('loader-utils');
 const BasicEvaluatedExpression = require('webpack/lib/BasicEvaluatedExpression');
 
 const PLUGIN_NAME = 'TranslatePlugin';
-const translationSymbol = require('./html-loader').symbol;
+const htmlTranslationSymbol = require('./html-loader').symbol;
+const jsTranslationSymbol = Symbol('JS translations');
 
 const translationFilePattern = /locales\/([^/]+)\/([^/]+)\.[^\.]+.json$/;
 const translationVariantPattern = /_((\d+)|plural)$/;
@@ -78,10 +79,10 @@ class TranslatePlugin {
 						parser.state.compilation.warnings.push(new Error(`Call to "i18n.tr" contains non-literal arguments:\n\t${module.resource} (line ${pos.line}, column ${pos.column})`));
 						return;
 					}
-					if (!module[translationSymbol]) {
-						module[translationSymbol] = [];
+					if (!module[jsTranslationSymbol]) {
+						module[jsTranslationSymbol] = [];
 					}
-					module[translationSymbol].push({key: keyArg.value, value: valueArg.value});
+					module[jsTranslationSymbol].push({key: keyArg.value, value: valueArg.value});
 				});
 			}
 		});
@@ -98,8 +99,10 @@ class TranslatePlugin {
 			// compilation.hooks.succeedModule.tap(PLUGIN_NAME, (module) => {
 			// 	console.log('Succeeded', module.request);
 			// });
+			compilation.hooks.buildModule.tap(PLUGIN_NAME, (module) => {
+				delete module[jsTranslationSymbol];
+			});
 			compilation.hooks.seal.tap(PLUGIN_NAME, () => {
-				// console.log('Sealed', compilation.name);
 				compilation.modules.forEach((m) => addModuleTranslations(m));
 			});
 			compilation.hooks.additionalAssets.tapAsync(PLUGIN_NAME, (callback) => {
@@ -174,22 +177,26 @@ class TranslatePlugin {
 			});
 
 			function addModuleTranslations(module) {
-				const moduleTranslations = module[translationSymbol];
-				if (moduleTranslations) {
-					moduleTranslations.forEach(({value, key}) => {
-						if (key.indexOf('${') !== -1) {
-							compilation.warnings.push(new Error(`Translation key "${key}" contains Aurelia interpolation`));
-						}
-						if (!value) {
-							compilation.warnings.push(new Error(`Translation key "${key}" has no default value`));
-						}
-						const existing = extractedTranslations[key];
-						if (existing && existing !== value) {
-							compilation.warnings.push(new Error(`Translation key "${key}" has mismatching definitions:\n\t1. ${existing}\n\t2. ${value}`));
-						}
+				if (module[htmlTranslationSymbol]) {
+					module[htmlTranslationSymbol].forEach(addTranslation);
+				}
+				if (module[jsTranslationSymbol]) {
+					module[jsTranslationSymbol].forEach(addTranslation);
+				}
+			}
 
-						extractedTranslations[key] = value;
-					});
+			function addTranslation({value, key}) {
+				if (key.indexOf('${') !== -1) {
+					compilation.warnings.push(new Error(`Translation key "${key}" contains Aurelia interpolation`));
+				}
+				if (!value) {
+					compilation.warnings.push(new Error(`Translation key "${key}" has no default value`));
+				}
+				const existing = extractedTranslations[key];
+				if (existing && existing !== value) {
+					compilation.warnings.push(new Error(`Translation key "${key}" has mismatching definitions:\n\t1. ${existing}\n\t2. ${value}`));
+				} else {
+					extractedTranslations[key] = value;
 				}
 			}
 		});
