@@ -17,7 +17,7 @@ function findTranslations(html) {
 	}
 
 	$('[t]').each((__i, el) => {
-		parseTranslations($(el)).forEach(({key, value}) => {
+		parseTranslations.call(this, $(el)).forEach(({key, value}) => {
 			if (value && value.indexOf('${') !== -1) {
 				this.emitWarning(new Error(`Translation key "${key}" contains Aurelia interpolation:\n\t${value}`));
 			}
@@ -44,6 +44,9 @@ function parseTranslations(element) {
 		switch (attr) {
 			case 'text':
 				value = element.text().trim();
+				if (element.find('*').length) {
+					this.emitWarning(new Error(`Translation key "${key}" contains HTML elements but is bound as text:\n\tText: ${value}\n\tHtml: ${element.html().trim()}`));
+				}
 				break;
 			case 'prepend':
 			case 'append':

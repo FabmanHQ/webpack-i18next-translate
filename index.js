@@ -72,9 +72,9 @@ class TranslatePlugin {
 						return;
 					}
 					const keyArg = args[0];
-					const valueArg = args.length >= 3 ? args[2] : args[0];
+					const valueArg = args.length >= 3 ? args[2] : '';
 					const module = parser.state.current;
-					if (keyArg.type !== 'Literal' || valueArg.type !== 'Literal') {
+					if (keyArg.type !== 'Literal' || valueArg && valueArg.type !== 'Literal') {
 						const pos = expression.loc.start;
 						parser.state.compilation.warnings.push(new Error(`Call to "i18n.tr" contains non-literal arguments:\n\t${module.resource} (line ${pos.line}, column ${pos.column})`));
 						return;
@@ -82,7 +82,7 @@ class TranslatePlugin {
 					if (!module[jsTranslationSymbol]) {
 						module[jsTranslationSymbol] = [];
 					}
-					module[jsTranslationSymbol].push({key: keyArg.value, value: valueArg.value});
+					module[jsTranslationSymbol].push({key: keyArg.value, value: valueArg && valueArg.value});
 				});
 			}
 		});
@@ -95,6 +95,7 @@ class TranslatePlugin {
 			}
 
 			const extractedTranslations = {};
+			const translationValues = {};
 
 			// compilation.hooks.succeedModule.tap(PLUGIN_NAME, (module) => {
 			// 	console.log('Succeeded', module.request);
@@ -143,7 +144,7 @@ class TranslatePlugin {
 						} else if (_.isString(parent[path])) {
 							const suffx = parts.join('.');
 							const parentPath = key.substr(0, key.length - suffx.length - 1);
-							compilation.warnings.push(new Error(`Translation key "${key}" cannot be used because the parent ${parentPath} is already in use.`));
+							compilation.errors.push(new Error(`Translation key "${key}" cannot be used because the parent ${parentPath} is already in use.`));
 							return;
 						}
 						parent = parent[path];
@@ -151,10 +152,16 @@ class TranslatePlugin {
 					const path = parts[0];
 					if (parent[path] && !_.isString(parent[path])) {
 						const subkeys = _.keys(parent[path]).map((k) => `${key}.${k}`);
-						compilation.warnings.push(new Error(`Translation key "${key}" cannot be used because there are already sub-keys:\n\t${subkeys.join('\n\t')}`));
+						compilation.errors.push(new Error(`Translation key "${key}" cannot be used because there are already sub-keys:\n\t${subkeys.join('\n\t')}`));
 						return;
 					}
 					parent[path] = value;
+				});
+
+				_.forEach(translationValues, (keys, value) => {
+					if (keys.size > 1) {
+						compilation.warnings.push(new Error(`There are multiple keys for translation "${value}":\n\t${Array.from(keys).join('\n\t')}`));
+					}
 				});
 
 				if (Object.keys(translations).length) {
@@ -191,6 +198,7 @@ class TranslatePlugin {
 				}
 				if (!value) {
 					compilation.warnings.push(new Error(`Translation key "${key}" has no default value`));
+					value = key;
 				}
 				const existing = extractedTranslations[key];
 				if (existing && existing !== value) {
@@ -198,6 +206,10 @@ class TranslatePlugin {
 				} else {
 					extractedTranslations[key] = value;
 				}
+				if (!translationValues[value]) {
+					translationValues[value] = new Set();
+				}
+				translationValues[value].add(key);
 			}
 		});
 
