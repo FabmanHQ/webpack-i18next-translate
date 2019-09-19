@@ -215,9 +215,16 @@ class TranslatePlugin {
 
 		const translationFiles = {};
 		compiler.hooks.emit.tapAsync(PLUGIN_NAME, (compilation, callback) => {
-			_.forEach(compilation.assets, (__v, name) => {
+			_.forEach(compilation.assets, (asset, name) => {
 				const match = translationFilePattern.exec(name);
 				if (match) {
+					// Check translation files for syntax errors
+					try {
+						JSON.parse(asset.source());
+					} catch (e) {
+						compilation.errors.push(new Error(`Translation file ${name} is not valid JSON: ${e.message}`));
+					}
+
 					const lang = match[1];
 					const ns = match[2];
 					if (!translationFiles[lang]) {
@@ -238,6 +245,7 @@ class TranslatePlugin {
 					return translationFilesStr.length;
 				},
 			};
+
 			callback();
 		});
 	}
