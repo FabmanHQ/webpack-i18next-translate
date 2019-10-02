@@ -64,6 +64,24 @@ const I18nextTranslatePlugin = require('webpack-i18next-translate');
 	],
 ```
 
+## Extracting default values from JS
+
+Unfortunately, i18next’s translation function doesn’t take a default value. But it’s really useful to see the actual message next to the translation key and extract it automatically. To enable this, change all your calls to the translation function by adding the default text as the third argument:
+```JavaScript
+// Original
+i18next.t('form.unsavedChanged', {});
+// New form
+i18next.t('form.unsavedChanged', {}, 'You have unsaved changes! Do you really want to leave this page?');
+```
+The third argument is ignored by i18next, but picked up by the `webpack-i18next-translate` plugin.
+
+If you use TypeScript, it will complain that `i18next.t` only requires two paramters. You might want to ignore this:
+```JavaScript
+// @ts-ignore
+i18next.t('form.unsavedChanged', {}, 'You have unsaved changes! Do you really want to leave this page?');
+```
+
+
 ## Index file
 
 The generated index file will have the following format:
