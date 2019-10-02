@@ -19,7 +19,7 @@ function findTranslations(html) {
 	$('[t]').each((__i, el) => {
 		parseTranslations.call(this, $(el)).forEach(({key, value}) => {
 			if (value && value.indexOf('${') !== -1) {
-				this.emitWarning(new Error(`Translation key "${key}" contains Aurelia interpolation:\n\t${value}`));
+				this.emitWarning(new Error(`Translation key "${key}" contains a non-i18next interpolation:\n\t${value}`));
 			}
 			translations.push({key, value});
 		});
@@ -61,13 +61,12 @@ function parseTranslations(element) {
 	});
 }
 
-const transSymbol = Symbol('HTML translations');
+const transSymbol = Symbol('i18next HTML translations');
 
 function htmlTranslationLoader(content) {
 	if (this.cacheable) {
 		this.cacheable();
 	}
-	// console.log('Looking for translations in ', this._module.request);
 	const translations = findTranslations.call(this, content);
 	this._module[transSymbol] = translations;
 	return content;
