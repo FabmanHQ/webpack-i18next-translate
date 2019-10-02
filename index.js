@@ -73,7 +73,6 @@ class TranslatePlugin {
 				parser.hooks.evaluateDefinedIdentifier.for(`_this6.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
 
 				parser.hooks.call.for(this.i18nFunctionName).tap(PLUGIN_NAME, (expression) => {
-					console.log('Found', expression);
 					const args = expression.arguments;
 					if (args.length === 0) {
 						return;
@@ -94,7 +93,6 @@ class TranslatePlugin {
 					if (!module[jsTranslationSymbol]) {
 						module[jsTranslationSymbol] = [];
 					}
-					console.log('Adding', keyArg.value, valueArg && valueArg.value);
 					module[jsTranslationSymbol].push({key: keyArg.value, value: valueArg && valueArg.value});
 				});
 			};
