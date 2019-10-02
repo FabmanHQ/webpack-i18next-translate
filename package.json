@@ -1,24 +1,22 @@
 {
-  "name": "fabman-webpack-translate",
+  "name": "webpack-i18next-translate",
   "version": "1.3.0",
   "description": "i18next translation plugin for Webpack",
   "main": "index.js",
-  "repository": "git@git.fabman.io:fabman/webpack-translate.git",
   "author": "Raphael Luba <raphael@fabman.io>",
-  "license": "UNLICENSED",
-  "private": true,
+  "license": "MIT",
   "dependencies": {
     "bluebird": "^3.5.1",
     "cheerio": "^1.0.0-rc.2",
     "loader-utils": "^1.1.0",
-    "lodash": "^4.17.5"
+    "lodash": "^4.17.15"
   },
   "peerDependencies": {
     "webpack": "^4.1.1"
   },
   "devDependencies": {
-    "eslint": "^4.19.1",
-    "eslint-plugin-fabman": "git+ssh://git@git.fabman.io:fabman/eslint-plugin.git#3.0.1",
+    "eslint": "^6.1.0",
+    "eslint-plugin-fabman": "FabmanHQ/eslint-plugin.git#semver:^3.0.3",
     "webpack": "^4.1.1"
   }
 }
