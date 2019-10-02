@@ -9,11 +9,10 @@ const loaderUtils = require('loader-utils');
 
 const BasicEvaluatedExpression = require('webpack/lib/BasicEvaluatedExpression');
 
-const PLUGIN_NAME = 'TranslatePlugin';
+const PLUGIN_NAME = 'I18nextTranslatePlugin';
 const htmlTranslationSymbol = require('./html-loader').symbol;
-const jsTranslationSymbol = Symbol('JS translations');
+const jsTranslationSymbol = Symbol('JS i18next translations');
 
-const translationFilePattern = /locales\/([^/]+)\/([^/]+)\.[^\.]+.json$/;
 const translationVariantPattern = /_((\d+)|plural)$/;
 
 function flatten(obj, result = {}, prefix = '') {
@@ -33,40 +32,48 @@ class TranslatePlugin {
 		this.destFilename = options.dest;
 		this.indexFilename = options.index;
 		this.createDiff = options.createDiff;
+		this.duplicateWarnings = options.duplicateWarnings;
+		this.i18nFunctionName = options.i18nFunctionName || 'i18next.t';
+		this.excludePaths = options.excludePaths || [path.resolve('./node_modules')];
+		this.translationFilePattern = options.translationFilePattern || /locales\/([^/]+)\/([^/]+)\.[^\.]+.json$/;
 	}
 	loadTranslation() {
 		return Bluebird.fromCallback((callback) => {
 			fs.readFile(this.srcFilename, callback);
 		})
-		.then(data => {
-			this.baseTranslations = JSON.parse(data);
-		});
+		.then(
+			data => {
+				this.baseTranslations = JSON.parse(data);
+			},
+			() => {
+				this.baseTranslations = {};
+			}
+		);
 	}
 	apply(compiler) {
 		compiler.hooks.run.tapPromise(PLUGIN_NAME, (__compiler) => this.loadTranslation());
 		compiler.hooks.watchRun.tapPromise(PLUGIN_NAME, (__compiler) => this.loadTranslation());
 
+		// Tap the JS parser to find all calls to the translation function
 		compiler.hooks.normalModuleFactory.tap(PLUGIN_NAME, factory => {
-			factory.hooks.parser.for('javascript/auto').tap(PLUGIN_NAME, tapParser);
-			factory.hooks.parser.for('javascript/dynamic').tap(PLUGIN_NAME, tapParser);
-			factory.hooks.parser.for('javascript/esm').tap(PLUGIN_NAME, tapParser);
+			const tapParser = (parser) => {
+				const evaluateToi18n = (expression) => {
+					return new BasicEvaluatedExpression().setRange(expression.range).setIdentifier(this.i18nFunctionName);
+				};
 
-			function tapParser(parser) {
-				parser.hooks.evaluateDefinedIdentifier.for('i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				parser.hooks.evaluateDefinedIdentifier.for('this.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				// Workaround for aliases produced by babel
-				parser.hooks.evaluateDefinedIdentifier.for('_this.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				parser.hooks.evaluateDefinedIdentifier.for('_this2.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				parser.hooks.evaluateDefinedIdentifier.for('_this3.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				parser.hooks.evaluateDefinedIdentifier.for('_this4.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				parser.hooks.evaluateDefinedIdentifier.for('_this5.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
-				parser.hooks.evaluateDefinedIdentifier.for('_this6.i18n.tr').tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(this.i18nFunctionName).tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(`this.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
+				// @ToDo, @Cleanup: Messy workaround for aliases produced by babel.
+				// Unfortunately, we can’t subscribe to something more general.
+				parser.hooks.evaluateDefinedIdentifier.for(`_this.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(`_this2.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(`_this3.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(`_this4.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(`_this5.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
+				parser.hooks.evaluateDefinedIdentifier.for(`_this6.${this.i18nFunctionName}`).tap(PLUGIN_NAME, evaluateToi18n);
 
-				function evaluateToi18n(expression) {
-					return new BasicEvaluatedExpression().setRange(expression.range).setIdentifier('i18n.tr');
-				}
-
-				parser.hooks.call.for('i18n.tr').tap(PLUGIN_NAME, (expression) => {
+				parser.hooks.call.for(this.i18nFunctionName).tap(PLUGIN_NAME, (expression) => {
+					console.log('Found', expression);
 					const args = expression.arguments;
 					if (args.length === 0) {
 						return;
@@ -74,22 +81,31 @@ class TranslatePlugin {
 					const keyArg = args[0];
 					const valueArg = args.length >= 3 ? args[2] : '';
 					const module = parser.state.current;
+					for (const excludePath of this.excludePaths) {
+						if (_.startsWith(module.resource, excludePath)) {
+							return;
+						}
+					}
 					if (keyArg.type !== 'Literal' || valueArg && valueArg.type !== 'Literal') {
 						const pos = expression.loc.start;
-						parser.state.compilation.warnings.push(new Error(`Call to "i18n.tr" contains non-literal arguments:\n\t${module.resource} (line ${pos.line}, column ${pos.column})`));
+						parser.state.compilation.warnings.push(new Error(`Call to "${this.i18nFunctionName}" contains non-literal arguments:\n\t${module.resource} (line ${pos.line}, column ${pos.column})`));
 						return;
 					}
 					if (!module[jsTranslationSymbol]) {
 						module[jsTranslationSymbol] = [];
 					}
+					console.log('Adding', keyArg.value, valueArg && valueArg.value);
 					module[jsTranslationSymbol].push({key: keyArg.value, value: valueArg && valueArg.value});
 				});
-			}
+			};
+
+			factory.hooks.parser.for('javascript/auto').tap(PLUGIN_NAME, tapParser);
+			factory.hooks.parser.for('javascript/dynamic').tap(PLUGIN_NAME, tapParser);
+			factory.hooks.parser.for('javascript/esm').tap(PLUGIN_NAME, tapParser);
 		});
 
 		compiler.hooks.compilation.tap(PLUGIN_NAME, (compilation) => {
 			if (compilation.name) {
-				// console.log('Child compilation', compilation.name);
 				// We’re not interested in child compilations
 				return;
 			}
@@ -97,9 +113,6 @@ class TranslatePlugin {
 			const extractedTranslations = {};
 			const translationValues = {};
 
-			// compilation.hooks.succeedModule.tap(PLUGIN_NAME, (module) => {
-			// 	console.log('Succeeded', module.request);
-			// });
 			compilation.hooks.buildModule.tap(PLUGIN_NAME, (module) => {
 				delete module[jsTranslationSymbol];
 			});
@@ -129,6 +142,9 @@ class TranslatePlugin {
 						}
 					});
 					const parsedSrc = path.parse(this.srcFilename);
+					if (!fs.existsSync(parsedSrc.dir)) {
+						fs.mkdirSync(parsedSrc.dir);
+					}
 					const diffFilename = path.join(parsedSrc.dir, `${parsedSrc.name}.diff.json`);
 					fs.writeFileSync(diffFilename, JSON.stringify(diff, null, '\t'));
 				}
@@ -158,19 +174,20 @@ class TranslatePlugin {
 					parent[path] = value;
 				});
 
-				_.forEach(translationValues, (keys, value) => {
-					if (keys.size > 1) {
-						compilation.warnings.push(new Error(`There are multiple keys for translation "${value}":\n\t${Array.from(keys).join('\n\t')}`));
-					}
-				});
+				if (this.duplicateWarnings) {
+					_.forEach(translationValues, (keys, value) => {
+						if (keys.size > 1) {
+							compilation.warnings.push(new Error(`There are multiple keys for translation "${value}":\n\t${Array.from(keys).join('\n\t')}`));
+						}
+					});
+				}
 
+				// Patch the current translation asset to have new keys available without having to modify the translation file.
 				if (Object.keys(translations).length) {
-					// console.log(translations);
 					const translationsStr = JSON.stringify(translations);
 					const assetName = loaderUtils.interpolateName({resourcePath: this.srcFilename}, this.destFilename, {
 						content: translationsStr,
 					});
-					// console.log('Creating asset', assetName);
 					compilation.assets[assetName] = {
 						source() {
 							return translationsStr;
@@ -180,6 +197,7 @@ class TranslatePlugin {
 						},
 					};
 				}
+
 				callback();
 			});
 
@@ -194,7 +212,7 @@ class TranslatePlugin {
 
 			function addTranslation({value, key}) {
 				if (key.indexOf('${') !== -1) {
-					compilation.warnings.push(new Error(`Translation key "${key}" contains Aurelia interpolation`));
+					compilation.warnings.push(new Error(`Translation key "${key}" contains non-i18next interpolation`));
 				}
 				if (!value) {
 					compilation.warnings.push(new Error(`Translation key "${key}" has no default value`));
@@ -216,9 +234,9 @@ class TranslatePlugin {
 		const translationFiles = {};
 		compiler.hooks.emit.tapAsync(PLUGIN_NAME, (compilation, callback) => {
 			_.forEach(compilation.assets, (asset, name) => {
-				const match = translationFilePattern.exec(name);
+				const match = this.translationFilePattern.exec(name);
 				if (match) {
-					// Check translation files for syntax errors
+					// Check translation files for syntax errors. (otherwise i18next may fail silently)
 					try {
 						JSON.parse(asset.source());
 					} catch (e) {
@@ -234,17 +252,17 @@ class TranslatePlugin {
 				}
 			});
 
-			// console.log(this.indexFilename, translationFiles);
-
 			const translationFilesStr = JSON.stringify(translationFiles);
-			compilation.assets[this.indexFilename] = {
-				source() {
-					return translationFilesStr;
-				},
-				size() {
-					return translationFilesStr.length;
-				},
-			};
+			if (this.indexFilename) {
+				compilation.assets[this.indexFilename] = {
+					source() {
+						return translationFilesStr;
+					},
+					size() {
+						return translationFilesStr.length;
+					},
+				};
+			}
 
 			callback();
 		});
